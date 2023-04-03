@@ -1,7 +1,14 @@
+const router = require("express").Router();
 // `checkUsernameFree`, `checkUsernameExists` ve `checkPasswordLength` gereklidir (require)
 // `auth-middleware.js` deki middleware fonksiyonları. Bunlara burda ihtiyacınız var!
-
-
+const {
+  sifreGecerlimi,
+  usernameVarmi,
+  usernameBostami,
+  sinirli,
+} = require("./auth-middleware");
+const bcryptjs = require("bcryptjs");
+const userModel = require("../users/users-model");
 /**
   1 [POST] /api/auth/register { "username": "sue", "password": "1234" }
 
@@ -25,6 +32,21 @@
   }
  */
 
+router.post(
+  "/register",
+  sifreGecerlimi,
+  usernameBostami,
+  async (req, res, next) => {
+    try {
+      let hashedPassword = bcryptjs.hashSync(req.body.password);
+      let model = { username: req.body.username, password: hashedPassword };
+      let insertedUser = await userModel.ekle(model);
+      res.status(201).json(insertedUser);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
   2 [POST] /api/auth/login { "username": "sue", "password": "1234" }
@@ -41,7 +63,22 @@
     "message": "Geçersiz kriter!"
   }
  */
-
+router.post("/login", usernameVarmi, async (req, res, next) => {
+  try {
+    let isValidPassword = bcryptjs.compareSync(
+      req.body.password,
+      req.userExist.password
+    );
+    if (isValidPassword) {
+      req.session.user_id = req.userExist.user_id;
+      res.json({ message: `Hoşgeldin ${req.body.username}` });
+    } else {
+      next({ status: 401, message: "Geçersiz kriter!" });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
   3 [GET] /api/auth/logout
@@ -58,6 +95,25 @@
     "message": "Oturum bulunamadı!"
   }
  */
+router.get("/logout", (req, res, next) => {
+  try {
+    if (req.session.user_id) {
+      req.session.destroy((err) => {
+        if (err) {
+          res
+            .status(500)
+            .json({ message: "session destroy edilirken hata oluştu" });
+        } else {
+          res.json({ message: "Çıkış yapildi" });
+        }
+      });
+    } else {
+      res.status(200).json({ message: "Oturum bulunamadı!" });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
 
- 
 // Diğer modüllerde kullanılabilmesi için routerı "exports" nesnesine eklemeyi unutmayın.
+module.exports = router;
